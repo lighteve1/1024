@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>合成1024 - Python (Brython)</title>
+  <style>
+    :root{--bg:#faf8ef;--tile-bg:#cdc1b4;--grid-bg:#bbada0;--empty:#eee4da}
+    body{font-family: 'Microsoft Yahei', Arial; background:var(--bg); display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .container{width:360px}
+    h1{text-align:center;margin:0 0 12px;font-weight:700;color:#776e65}
+    .score-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .score{background:#eee; padding:8px 12px;border-radius:6px;font-weight:700}
+    .board{background:var(--grid-bg);padding:12px;border-radius:8px;display:grid;grid-template-columns:repeat(4,1fr);grid-gap:12px}
+    .cell{width:76px;height:76px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;background:var(--empty);box-shadow:inset 0 -4px rgba(0,0,0,0.08)}
+    .controls{margin-top:12px;text-align:center}
+    button{padding:8px 12px;border-radius:6px;border:0;background:#8f7a66;color:white;font-weight:700;cursor:pointer}
+    .small{font-size:12px;color:#666;text-align:center;margin-top:8px}
+    /* tile colors */
+    .t2{background:#eee4da;color:#776e65}
+    .t4{background:#ede0c8;color:#776e65}
+    .t8{background:#f2b179;color:#f9f6f2}
+    .t16{background:#f59563;color:#f9f6f2}
+    .t32{background:#f67c5f;color:#f9f6f2}
+    .t64{background:#f65e3b;color:#f9f6f2}
+    .t128{background:#edcf72;color:#f9f6f2;font-size:20px}
+    .t256{background:#edcc61;color:#f9f6f2;font-size:20px}
+    .t512{background:#edc850;color:#f9f6f2;font-size:18px}
+    .t1024{background:#edc53f;color:#f9f6f2;font-size:16px}
+    .t2048{background:#edc22e;color:#f9f6f2;font-size:16px}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100}
+    .panel{background:white;padding:20px 30px;border-radius:10px;text-align:center;max-width:90%;animation:pop .3s ease}
+    @keyframes pop{0%{transform:scale(0.8);opacity:0;}100%{transform:scale(1);opacity:1;}}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/brython@3.11.1/brython.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/brython@3.11.1/brython_stdlib.js"></script>
+</head>
+<body onload="brython()">
+  <div class="container">
+    <h1>合成1024</h1>
+    <div class="score-row">
+      <div class="score" id="score">分数: 0</div>
+      <div><button id="btn-new">新游戏</button></div>
+    </div>
+
+    <div class="board" id="board"></div>
+
+    <div class="controls">
+      <div class="small">使用键盘 ← ↑ → ↓ 或在手机上滑动 来移动方块</div>
+    </div>
+  </div>
+
+  <script type="text/python">
+from browser import document, html
+import random
+
+SIZE = 4
+board_el = document['board']
+score_el = document['score']
+
+board = [[0]*SIZE for _ in range(SIZE)]
+score = 0
+celebrated_1024 = False  # 避免重复弹窗
+
+def reset_game(ev=None):
+    global board, score, celebrated_1024
+    board = [[0]*SIZE for _ in range(SIZE)]
+    score = 0
+    celebrated_1024 = False
+    add_random_tile()
+    add_random_tile()
+    render()
+
+def add_random_tile():
+    empties = [(r,c) for r in range(SIZE) for c in range(SIZE) if board[r][c]==0]
+    if not empties:
+        return
+    r,c = random.choice(empties)
+    board[r][c] = 4 if random.random() < 0.1 else 2
+
+def compress(row):
+    new = [v for v in row if v!=0]
+    while len(new) < SIZE:
+        new.append(0)
+    return new
+
+def merge(row):
+    global score, celebrated_1024
+    for i in range(SIZE-1):
+        if row[i] != 0 and row[i] == row[i+1]:
+            row[i] *= 2
+            score += row[i]
+            row[i+1] = 0
+            if row[i] == 1024 and not celebrated_1024:
+                celebrated_1024 = True
+                show_celebration()
+    return row
+
+def move_left():
+    moved = False
+    for r in range(SIZE):
+        old = list(board[r])
+        row = compress(board[r])
+        row = merge(row)
+        row = compress(row)
+        board[r] = row
+        if row != old:
+            moved = True
+    return moved
+
+def move_right():
+    for r in range(SIZE):
+        board[r].reverse()
+    moved = move_left()
+    for r in range(SIZE):
+        board[r].reverse()
+    return moved
+
+def transpose():
+    global board
+    board = [list(row) for row in zip(*board)]
+
+def move_up():
+    transpose()
+    moved = move_left()
+    transpose()
+    return moved
+
+def move_down():
+    transpose()
+    moved = move_right()
+    transpose()
+    return moved
+
+def render():
+    board_el.innerHTML = ''
+    for r in range(SIZE):
+        for c in range(SIZE):
+            v = board[r][c]
+            cls = 'cell'
+            if v: cls += f' t{v}'
+            board_el <= html.DIV(str(v) if v else '', Class=cls)
+    score_el.text = f'分数: {score}'
+
+def show_celebration():
+    overlay = html.DIV(Class='overlay')
+    panel = html.DIV(Class='panel')
+    panel <= html.H2('🎉 1024节日快乐！🎉')
+    panel <= html.P('恭喜你成功合成 1024！')
+    btn = html.BUTTON('继续游戏')
+    def close(ev):
+        overlay.remove()
+    btn.bind('click', close)
+    panel <= btn
+    overlay <= panel
+    document.body <= overlay
+
+def do_move(dir):
+    moved = False
+    if dir == 'left':
+        moved = move_left()
+    elif dir == 'right':
+        moved = move_right()
+    elif dir == 'up':
+        moved = move_up()
+    elif dir == 'down':
+        moved = move_down()
+    if moved:
+        add_random_tile()
+        render()
+
+def on_key(ev):
+    k = ev.keyCode
+    if k == 37: do_move('left')
+    elif k == 38: do_move('up')
+    elif k == 39: do_move('right')
+    elif k == 40: do_move('down')
+
+# 触摸滑动支持
+start_x = start_y = None
+def touch_start(ev):
+    global start_x, start_y
+    t = ev.touches[0]
+    start_x, start_y = t.clientX, t.clientY
+
+def touch_end(ev):
+    global start_x, start_y
+    t = ev.changedTouches[0]
+    dx, dy = t.clientX - start_x, t.clientY - start_y
+    if abs(dx) < 20 and abs(dy) < 20: return
+    if abs(dx) > abs(dy):
+        do_move('right' if dx > 0 else 'left')
+    else:
+        do_move('down' if dy > 0 else 'up')
+    start_x = start_y = None
+
+document.bind('keydown', on_key)
+document.bind('touchstart', touch_start)
+document.bind('touchend', touch_end)
+document['btn-new'].bind('click', reset_game)
+
+reset_game()
+  </script>
+</body>
+</html>
